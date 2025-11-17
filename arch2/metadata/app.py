@@ -77,8 +77,28 @@ def get_user(username):
         "username": username,
         "password": USERS[username]
     }), 200
-# ---------------- Main ----------------
+# ---------------- Main ---------------- 
 if __name__ == "__main__":
     import sys
+    import threading
     sys.stdout.reconfigure(line_buffering=True)  # flush prints immediately
+    
+    # Start 2PC participant server in background thread
+    try:
+        sys.path.insert(0, '/app')
+        sys.path.insert(0, '/app/..')
+        from twopc_participant import serve
+        
+        def start_2pc():
+            server = serve(FILES)  # Pass FILES dict reference
+            import time
+            while True:
+                time.sleep(1)
+        
+        twopc_thread = threading.Thread(target=start_2pc, daemon=True)
+        twopc_thread.start()
+        print("2PC participant server started on port 6002")
+    except ImportError as e:
+        print(f"2PC participant not available: {e}")
+    
     app.run(host="0.0.0.0", port=5005, debug=True)

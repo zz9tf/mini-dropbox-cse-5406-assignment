@@ -1,11 +1,13 @@
 import os
 import jwt
 import datetime
+import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, request, jsonify, Response
-import requests, os
+import requests
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 
 METADATA_API = "http://metadata:5005" # metadata service URL
 STORAGE_API = "http://storage:5006" # storage service URL
@@ -113,28 +115,65 @@ def require_auth(f):
     wrapper.__name__ = f.__name__
     return wrapper
 
-# upload file endpoint
+# upload file endpoint (uses 2PC to verify all nodes are alive, then executes original HTTP operations)
 @app.route("/files/upload", methods=["POST"])
 @require_auth
 def upload():
+    """Upload file with 2PC: verify all nodes are alive via gRPC, then execute original HTTP operations"""
     if "file" not in request.files:
         return jsonify({"error": "No file part"}), 400
     
-    # get the file
     file = request.files["file"]
-    files = {'file': (file.filename, file.stream, file.mimetype)}
-
-    # forward the file to the storage service via POST
-    resp = requests.post(f"{STORAGE_API}/upload", files=files)
-
-    # check response from storage service
-    if resp.status_code != 200:
-        return jsonify({"error": "Storage error"}), 500
-
+    filename = file.filename
+    file_data = file.read()
+    
     try:
-        return resp.json(), resp.status_code
-    except Exception:
-        return jsonify({"error": "Non-JSON response from storage", "raw": resp.text}), resp.status_code
+        import sys
+        sys.path.insert(0, '/app')
+        sys.path.insert(0, '/app/..')
+        from twopc_coordinator import TwoPhaseCommitCoordinator
+        
+        # Prepare metadata
+        metadata = {
+            "filename": filename,
+            "path": f"/storage/{filename}",
+            "size": len(file_data),
+            "version": 1
+        }
+        
+        # Execute 2PC: verify nodes alive, then execute original HTTP operations
+        coordinator = TwoPhaseCommitCoordinator()
+        result = coordinator.execute_2pc_upload(filename, file_data, metadata)
+        
+        if result['success']:
+            # 2PC validated nodes and operations executed in decision phase
+            return jsonify({
+                "message": "File uploaded successfully using 2PC",
+                "transaction_id": result['transaction_id'],
+                "filename": filename,
+                "path": metadata["path"]
+            }), 201
+        else:
+            return jsonify({
+                "error": "2PC transaction failed",
+                "message": result['message'],
+                "transaction_id": result['transaction_id']
+            }), 500
+            
+    except ImportError as e:
+        # Fallback to original behavior if 2PC not available
+        logger.warning(f"2PC not available: {e}, using original upload")
+        file.seek(0)
+        files = {'file': (filename, file.stream, file.mimetype)}
+        resp = requests.post(f"{STORAGE_API}/upload", files=files)
+        if resp.status_code != 200:
+            return jsonify({"error": "Storage error"}), 500
+        try:
+            return resp.json(), resp.status_code
+        except Exception:
+            return jsonify({"error": "Non-JSON response from storage", "raw": resp.text}), resp.status_code
+    except Exception as e:
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 # list files endpoint
 @app.route("/files", methods=["GET"])

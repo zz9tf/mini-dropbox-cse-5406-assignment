@@ -1,15 +1,15 @@
 version: "3.8"
 services:
   client:
-      build: ./client
-      depends_on:
-        - services
-      environment:
-        - API_URL=http://services:5000
-      volumes:
-        - ./client:/app
-      stdin_open: true
-      tty: true
+    build: ./client
+    depends_on:
+      - services
+    environment:
+      - API_URL=http://services:5000
+    volumes:
+      - ./client:/app
+    stdin_open: true
+    tty: true
   services:
     build: ./services
     ports:

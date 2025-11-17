@@ -4,6 +4,9 @@ import requests
 
 app = Flask(__name__)
 
+# Node ID for 2PC (can be overridden by environment variable)
+NODE_ID = os.environ.get('NODE_ID', 'storage')
+
 STORAGE_PATH = "/storage"
 METADATA_API = "http://metadata:5005/files"
 
@@ -121,8 +124,25 @@ def delete_file():
 
     return jsonify({"status": "deleted"}), 200
 
-# ---------------- Main ----------------
+# ---------------- Main ---------------- 
 if __name__ == "__main__":
     import sys
+    import threading
     sys.stdout.reconfigure(line_buffering=True)  # ensure prints appear immediately
+    
+    # Start 2PC participant server in background thread
+    try:
+        sys.path.insert(0, '/app')
+        sys.path.insert(0, '/app/..')
+        from twopc_participant import serve
+        
+        def start_2pc():
+            serve()
+        
+        twopc_thread = threading.Thread(target=start_2pc, daemon=True)
+        twopc_thread.start()
+        print(f"2PC participant server started for {NODE_ID} on port 6001")
+    except ImportError as e:
+        print(f"2PC participant not available: {e}")
+    
     app.run(host="0.0.0.0", port=5006, debug=True)

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package twopc;
+
+// Two-Phase Commit Protocol Service Definition
+
+// Vote Phase Messages
+message VoteRequest {
+    string transaction_id = 1;
+    string operation = 2;  // "upload", "delete", etc.
+    string filename = 3;
+    string file_data = 4;  // Base64 encoded file data for upload
+    string metadata_json = 5;  // JSON string for metadata
+    string node_id = 6;  // Coordinator node ID
+}
+
+message VoteResponse {
+    bool vote_commit = 1;  // true = vote-commit, false = vote-abort
+    string message = 2;
+    string node_id = 3;  // Participant node ID
+}
+
+// Decision Phase Messages
+message DecisionRequest {
+    string transaction_id = 1;
+    bool global_commit = 2;  // true = global-commit, false = global-abort
+    string node_id = 3;  // Coordinator node ID
+}
+
+message DecisionResponse {
+    bool success = 1;
+    string message = 2;
+    string node_id = 3;  // Participant node ID
+}
+
+// Service for Vote Phase
+service VotePhaseService {
+    rpc Vote(VoteRequest) returns (VoteResponse);
+}
+
+// Service for Decision Phase
+service DecisionPhaseService {
+    rpc Decision(DecisionRequest) returns (DecisionResponse);
+}

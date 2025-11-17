@@ -1,24 +1,30 @@
 version: "3.8"
 services:
   client:
-      build: ./client
-      depends_on:
-        - upload
-        - download
-      environment:
-        - UPLOAD_URL=http://upload:5003
-        - DOWNLOAD_URL=http://download:5004
-      volumes:
-        - ./client:/app
-      stdin_open: true
-      tty: true
+    build: ./client
+    depends_on:
+      - upload
+      - download
+    environment:
+      - UPLOAD_URL=http://upload:5003
+      - DOWNLOAD_URL=http://download:5004
+    volumes:
+      - ./client:/app
+    stdin_open: true
+    tty: true
   upload:
     build: ./services/upload
+    volumes:
+      - ./protos:/app/protos:ro
     ports:
       - "5003:5003"
     depends_on:
       - storage
       - metadata
+    environment:
+      - NODE_ID=coordinator
+      - STORAGE_NODES=storage:6001
+      - METADATA_NODES=metadata:6002
   download:
     build: ./services/download
     ports:
@@ -30,15 +36,25 @@ services:
     build: ./metadata
     volumes:
       - metadata_data:/data
+      - ./protos:/app/protos:ro
     ports:
-      - "5005:5005"
+      - "5005:5005" # Flask API
+      - "6002:6002" # 2PC participant gRPC
+    environment:
+      - NODE_ID=metadata
+      - PARTICIPANT_PORT=6002
 
   storage:
     build: ./storage
     volumes:
       - storage_data:/storage
+      - ./protos:/app/protos:ro
     ports:
-      - "5006:5006"
+      - "5006:5006" # Flask API
+      - "6001:6001" # 2PC participant gRPC
+    environment:
+      - NODE_ID=storage
+      - PARTICIPANT_PORT=6001
 
   backup:
     build: ./backup
